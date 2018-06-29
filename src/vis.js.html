@@ -1,0 +1,315 @@
+<html>
+<head>
+    <title>vis.js</title>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+    <script type="text/javascript" src="./khan_formatted.json"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css" rel="stylesheet" type="text/css"/>
+</head>
+<body>
+<div id="editor">
+    <input id="ancestors_check" type="checkbox" checked /> Ancestors
+    <input id="descendants_check" type="checkbox" /> Descendants
+    <input type='button' value="Highlight" onclick="highlight()"/>
+    <input type='button' value="Highlight in new graph" onclick="rerenderSubgraph()"/>
+    <input type='button' value="Reset" onclick="reset()"/>
+    Search <input id='autosuggest' type='text' />
+    <select id='suggestions' />
+    <input type='button' value='Select Node' onclick="selectSuggested()" />
+</div>
+<div id="mynetwork"></div>
+<div id="dialog">
+<div id="dialogDrawingArea"></div>
+</div>
+<script type="text/javascript">
+
+var nodes = new vis.DataSet();
+var edges = new vis.DataSet();
+
+var data = {
+    nodes: nodes,
+    edges: edges
+};
+var options = {
+    edges: {
+        font: {
+          size: 12
+        },
+        widthConstraint: {
+          maximum: 90
+        },
+        arrows: {
+          to:{
+              enabled:true
+          }
+        },
+        chosen: {
+            edge:   function(values, id, selected, hovering) {
+                values.color = 'red';
+              }
+        }
+    },
+    nodes: {
+        shape: 'box',
+        margin: 10,
+        widthConstraint: {
+          maximum: 200
+        },
+        chosen: {
+            node:   function(values, id, selected, hovering) {
+                values.borderColor = 'red';
+              }
+        }
+    },
+    physics: {
+        enabled: false
+    }
+};
+
+var network = null;
+var dependencyEdges = [];
+var finalNodes = [];
+
+function isEmptyObject(obj)
+{
+    for (var key in obj)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+function getHighlight()
+{
+    var selectedNodes = network.getSelectedNodes();
+    if (!selectedNodes || selectedNodes.length != 1)
+    {
+        alert("select exactly one node to highlight.");
+    }
+    
+    var ancestorsWanted = $('#ancestors_check').prop('checked');
+    var descendantsWanted = $('#descendants_check').prop('checked');
+    if (!ancestorsWanted && !descendantsWanted)
+    {
+        alert("choose at least one of ancestors/descendants.");
+    }
+    
+    var node = selectedNodes[0];
+    var nodesToSelect = {};
+    nodesToSelect[node] = true;
+    if (ancestorsWanted)
+    {
+        var ancestorsQ = [node];
+        while (ancestorsQ.length > 0)
+        {
+            var next = ancestorsQ[0];
+            var nextAncestors = dependencyEdges.filter(function(e){
+                return e.to == next;
+            }).map(function(e){
+                if (network.body.nodes[e.from])
+                {
+                    nodesToSelect[e.from] = true;
+                }
+                
+                return e.from;
+            });
+            ancestorsQ = ancestorsQ.splice(1).concat(nextAncestors);
+        }
+    }
+    
+    if (descendantsWanted)
+    {
+        var descendantsQ = [node];
+        while (descendantsQ.length > 0)
+        {
+            var next = descendantsQ[0];
+            var nextDescendants = dependencyEdges.filter(function(e){
+                return e.from == next;
+            }).map(function(e){
+                if (network.body.nodes[e.to])
+                {
+                    nodesToSelect[e.to] = true;
+                }
+                
+                return e.to;
+            });
+            descendantsQ = descendantsQ.splice(1).concat(nextDescendants);
+        }
+    }
+    
+    var nodesToSelectArray = [];
+    for (var key in nodesToSelect)
+    {
+        nodesToSelectArray.push(key);
+    }
+    
+    var edgesToSelectArray = [];
+    for (var i = 0; i < dependencyEdges.length; i ++)
+    {
+        var edge = dependencyEdges[i];
+        if (nodesToSelect[edge.from] && nodesToSelect[edge.to])
+        {
+            edgesToSelectArray.push(edge.id);
+        }
+    }
+    
+    return {nodes:nodesToSelectArray,edges:edgesToSelectArray};
+}
+
+function highlight()
+{
+    network.setSelection(getHighlight());
+    //network.selectEdges(edgesToSelectArray);
+}
+
+function reset()
+{
+    for (var id in data.nodes._data)
+    {
+        data.nodes._data[id].hidden = false;
+    }
+    
+    network.setData(data);
+    network.fit();
+}
+
+function rerenderSubgraph()
+{
+    var highlights = getHighlight();
+    for (var id in data.nodes._data)
+    {
+        data.nodes._data[id].hidden = true;
+    }
+    
+    for (var i = 0; i < highlights.nodes.length; i ++)
+    {
+        data.nodes._data[highlights.nodes[i]].hidden = false;
+    }
+    
+    network.setData(data);
+    network.fit();
+}
+
+$(document).keyup(function(e){
+    if (e.which == 46)
+    {
+        network.deleteSelected();
+    }
+});
+
+$(document).ready(function(){        
+
+    var coordinatedNodes = [];
+    var nodesToRemove = {};
+    var nodesRemoved = {};
+    var starterNodesArray = [];
+    for (var i = 0; i < khan.length; i ++)
+    {
+        var node = khan[i];
+        if (node.dependencies.length > 0)
+        {
+            nodesToRemove[khan[i].id] = khan[i];
+        }
+        else
+        {
+            starterNodesArray.push(node);
+            nodesRemoved[khan[i].id] = khan[i];
+        }
+    }
+    
+    coordinatedNodes.push(starterNodesArray);
+    while (!isEmptyObject(nodesToRemove))
+    {
+        var currentColumnArray = [];
+        for (var i in nodesToRemove)
+        {
+            var node = nodesToRemove[i];
+            if (node.dependencies.every(function(n)
+                {
+                    return nodesRemoved[n.source];
+                }))
+            {
+                currentColumnArray.push(node);
+            }
+        }
+        
+        if (currentColumnArray.length == 0)
+        {
+            break;
+        }
+        
+        for (var i = 0; i < currentColumnArray.length; i ++)
+        {
+            delete nodesToRemove[currentColumnArray[i].id];
+            nodesRemoved[currentColumnArray[i].id] = currentColumnArray[i];
+        }
+        
+        coordinatedNodes.push(currentColumnArray);
+    }
+    
+    // nodes.add(khan.map(function(n){return {id:n.id,label:n.title}}));
+    
+    var x = 0, y = 0;
+    var xspacing = 250, yspacing = 80;
+    for (var i = 0; i < coordinatedNodes.length; i ++)
+    {
+        var column = coordinatedNodes[i];
+        y = 0;
+        for (var j = 0; j < column.length; j ++)
+        {
+            var node = column[j];
+            finalNodes.push({id:node.id,label:node.title,title:node.summary,x:x,y:y});
+            y += yspacing;
+        }
+        
+        x += xspacing;
+    }
+    
+    nodes.add(finalNodes);
+    
+    for (var i = 0; i < khan.length; i ++)
+    {
+        var dependencies = khan[i].dependencies;
+        for (var j = 0; j < dependencies.length; j ++)
+        {
+            dependencyEdges.push({from:dependencies[j].source,to:khan[i].id,label:'requiredBy'});
+        }
+    }
+  
+    edges.add(dependencyEdges);
+    
+    var container = document.getElementById('mynetwork');
+    network = new vis.Network(container, data, options);
+});
+
+$('#autosuggest').keyup(function(){
+    var suggestions = $('#suggestions');
+    suggestions.html('');
+    var text = $(this).val();
+    for (var i = 0; i < finalNodes.length; i ++)
+    {
+        var node = finalNodes[i];
+        if (node.id.indexOf(text) >= 0 || node.label.indexOf(text) >= 0 || (node.title && node.title.indexOf(text) >= 0))
+        {
+            suggestions.append('<option value="' + node.id + '">' + node.label + '</option>');
+        }
+    }    
+});
+
+function selectSuggested()
+{
+    network.selectNodes([$('#suggestions').val()]);
+}
+
+function highlightInDialog()
+{
+    $('#dialog').dialog({width:'500px',height:'500px'});
+    var container = document.getElementById('dialogDrawingArea');
+    new vis.Network(container, data, options);
+}
+</script>
+</body>
+</html>
