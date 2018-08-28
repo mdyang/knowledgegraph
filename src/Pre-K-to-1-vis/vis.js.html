@@ -1,0 +1,96 @@
+<html>
+<head>
+    <title>vis.js</title>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script type="text/javascript" src="./export/comprises.json"></script>
+    <script type="text/javascript" src="./export/requires.json"></script>
+    <script type="text/javascript" src="./export/skills.json"></script>
+    <script type="text/javascript" src="./export/views.json"></script>
+    <script type="text/javascript" src="./export/coordinates.json"></script>
+    <script type="text/javascript" src="./styles.json"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css"/>
+</head>
+<body>
+<div id="mynetwork"></div>
+<script type="text/javascript">
+
+var nodes = new vis.DataSet();
+var edges = new vis.DataSet();
+
+var container = document.getElementById('mynetwork');
+var data = {
+    nodes: nodes,
+    edges: edges
+};
+var options = {
+    edges: {
+        font: {
+          size: 12
+        },
+        widthConstraint: {
+          maximum: 90
+        },
+        arrows: {
+          to:{
+              enabled:true
+          }
+        }
+    },
+    nodes: {
+        shape: 'box',
+        margin: 10,
+        widthConstraint: {
+          maximum: 200
+        }
+    },
+    physics: {
+        enabled: false
+    }
+};
+
+var network = null;
+
+$(document).ready(function(){
+    coordinates = coordinates.coordinates;
+    for (var i = 0; i < manifest.nodes.length; i ++)
+    {
+        var nodeDef = manifest.nodes[i];
+        var mapping = nodeDef.mapping;
+        nodes.add(nodeDef.data.map(function(n)
+        {
+            var result = {};
+            for (var j = 0; j < mapping.length; j ++)
+            {
+                result[mapping[j].to] = n[mapping[j].from];
+            }
+            
+            $.extend(true, result, nodeDef.extend);
+            $.extend(true, result, coordinates[result.id]);
+            return result;
+        }));
+    }
+
+    for (var i = 0; i < manifest.edges.length; i ++)
+    {
+        var edgeDef = manifest.edges[i];
+        var mapping = edgeDef.mapping;
+        edges.add(edgeDef.data.map(function(n)
+        {
+            var result = {};
+            for (var j = 0; j < mapping.length; j ++)
+            {
+                result[mapping[j].to] = n[mapping[j].from];
+            }
+            
+            $.extend(true, result, edgeDef.extend);
+            
+            return result;
+        }));
+    }
+    
+    network = new vis.Network(container, data, options);
+});
+</script>
+</body>
+</html>

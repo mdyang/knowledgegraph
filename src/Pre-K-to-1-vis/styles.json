@@ -1,0 +1,46 @@
+var manifest = {
+    nodes: [
+        {
+            data: skills,
+            mapping: [
+                { from: "_id", to: 'id' },
+                { from: "name", to: 'label' }
+            ],
+            extend: {
+                group: 0
+            }
+        },
+        {
+            data: views,
+            mapping: [
+                { from: "_id", to: 'id' },
+                { from: "name", to: 'label' }
+            ],
+            extend: {
+                group: 1
+            }
+        }
+    ],
+    edges: [
+        {
+            data: comprises, 
+            mapping: [
+                { from: "_from", to: 'from' },
+                { from: "_to", to: 'to' }
+            ],
+            extend: {
+                label: 'comprises'
+            }
+        }, 
+        {
+            data: requires,
+            mapping: [
+                { from: "_from", to: 'from' },
+                { from: "_to", to: 'to' }
+            ],
+            extend: {
+                label: 'requires'
+            }
+        }
+    ]
+};
